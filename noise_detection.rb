@@ -1,9 +1,9 @@
 #!/usr/bin/ruby -w
 #
-# Copyright (C) 2013 Marco Mornati [http://www.mornati.net]
-# Based on Thomer M. Gil First [http://thomer.com/] version template
+# Copyright (C) 2015 Matt Scaperoth [http://scaperoth.com]
+# Based on Marco Mornati [http://www.mornati.net/] Ruby noise detection
 #
-# Oct  05, 2012: Initial version
+# June  16, 2015: Initial version
 #
 # This program is free software. You may distribute it under the terms of
 # the GNU General Public License as published by the Free Software
@@ -22,6 +22,7 @@ require 'optparse'
 require 'net/smtp'
 require 'logger'
 require 'date'
+require 'em-http-request'
 
 
 HW_DETECTION_CMD = "cat /proc/asound/cards"
@@ -39,6 +40,7 @@ logger.level = Logger::DEBUG
 
 logger.info("Noise detector started @ #{DateTime.now.strftime('%d/%m/%Y %H:%M:%S')}")
 
+Thread.new { EventMachine.run }
 
 def self.check_required()
   if !File.exists?('/usr/bin/arecord')
@@ -55,7 +57,7 @@ def self.check_required()
     warn "/proc/asound/cards not found"
     exit 1
   end
-  
+
 end
 
 # Parsing script parameters
@@ -72,8 +74,8 @@ optparse = OptionParser.new do |opts|
   opts.on("-n", "--threshold NOISE_THRESHOLD", "Set Activation noise Threshold. EX. 0.1") do |n|
     options[:threshold] = n
   end
-  opts.on("-e", "--email DEST_EMAIL", "Alert destination email") do |e|
-    options[:email] = e
+  opts.on("-e", "--event DEST_EVENT", "Alert destination Event") do |e|
+    options[:event] = e
   end
   opts.on("-v", "--[no-]verbose", "Run verbosely") do |v|
     options[:verbose] = v
@@ -104,42 +106,42 @@ if options[:kill]
 end
 
 if options[:detection]
-    puts "Detecting your soundcard..."
-    puts `#{HW_DETECTION_CMD}`
-    exit 0
+  puts "Detecting your soundcard..."
+  puts `#{HW_DETECTION_CMD}`
+  exit 0
 end
 
 #Check required binaries
 check_required()
 
 if options[:sample]
-    SAMPLE_DURATION = options[:sample]
+  SAMPLE_DURATION = options[:sample]
 end
 
 if options[:threshold]
-    THRESHOLD = options[:threshold].to_f
+  THRESHOLD = options[:threshold].to_f
 end
 
 if options[:test]
-    puts "Testing soundcard..."
-    puts `/usr/bin/arecord -D plughw:#{options[:test]},0 -d #{SAMPLE_DURATION} -f #{FORMAT} 2>/dev/null | /usr/bin/sox -t .wav - -n stat 2>&1`
-    exit 0
+  puts "Testing soundcard..."
+  puts `/usr/bin/arecord -D plughw:#{options[:test]},0 -d #{SAMPLE_DURATION} -f #{FORMAT} 2>/dev/null | /usr/bin/sox -t .wav - -n stat 2>&1`
+  exit 0
 end
 
 optparse.parse!
 
 #Now raise an exception if we have not found a host option
 raise OptionParser::MissingArgument if options[:microphone].nil?
-raise OptionParser::MissingArgument if options[:email].nil?
+raise OptionParser::MissingArgument if options[:event].nil?
 
 if options[:verbose]
-   logger.debug("Script parameters configurations:")
-   logger.debug("SoundCard ID: #{options[:microphone]}")
-   logger.debug("Sample Duration: #{SAMPLE_DURATION}")
-   logger.debug("Output Format: #{FORMAT}")
-   logger.debug("Noise Threshold: #{THRESHOLD}")
-   logger.debug("Record filename (overwritten): #{RECORD_FILENAME}")
-   logger.debug("Destination email: #{options[:email]}")
+  logger.debug("Script parameters configurations:")
+  logger.debug("SoundCard ID: #{options[:microphone]}")
+  logger.debug("Sample Duration: #{SAMPLE_DURATION}")
+  logger.debug("Output Format: #{FORMAT}")
+  logger.debug("Noise Threshold: #{THRESHOLD}")
+  logger.debug("Record filename (overwritten): #{RECORD_FILENAME}")
+  logger.debug("Destination event: #{options[:event]}")
 end
 
 #Starting script part
@@ -151,13 +153,13 @@ pid = fork do
   Signal.trap("TERM") do
     logger.info("Terminating...")
     File.delete(PID_FILE)
-    stop_process = true 
+    stop_process = true
   end
 
   loop do
     if (stop_process)
-	logger.info("Noise detector stopped @ #{DateTime.now.strftime('%d/%m/%Y %H:%M:%S')}")	
-	break
+      logger.info("Noise detector stopped @ #{DateTime.now.strftime('%d/%m/%Y %H:%M:%S')}")
+      break
     end
     rec_out = `/usr/bin/arecord -D plughw:#{options[:microphone]},0 -d #{SAMPLE_DURATION} -f #{FORMAT} -t wav #{RECORD_FILENAME} 2>/dev/null`
     out = `/usr/bin/sox -t .wav #{RECORD_FILENAME} -n stat 2>&1`
@@ -166,24 +168,13 @@ pid = fork do
     logger.debug("Detected amplitude: #{amplitude}") if options[:verbose]
     if amplitude > THRESHOLD
       logger.info("Sound detected!!!")
-  
-  	# Read a file
-	filecontent = File.open(RECORD_FILENAME ,"rb") {|io| io.read}
- 	
-        encoded = [filecontent].pack("m")    # base64 econding
-puts  value = %x[/usr/sbin/sendmail #{options[:email]} << EOF
-subject: WARNING: Noise Detected
-from: home@mornati.net
-Content-Description: "noise.wav"
-Content-Type: audio/x-wav; name="noise.wav"
-Content-Transfer-Encoding:base64
-Content-Disposition: attachment; filename="noise.wav"
-#{encoded}
-EOF] 
+      http = Keen.publish_async(options[:event], { :bark => amplitude})
+      http.callback { |response| puts "Success: #{response}"}
+      http.errback { puts "was a failurrr :,(" }
     else
       logger.debug("No sound detected...")
     end
-end
+  end
 end
 
 Process.detach(pid)

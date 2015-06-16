@@ -5,7 +5,7 @@
 # chkconfig:    - 24 76
 #
 # description: This script allow you to detect noise using your computer
-#              microphone and send an email alert to you. 
+#              microphone and send an a call to Keen IO api to track data. 
 #
 ### BEGIN INIT INFO
 # Provides:          noised
