@@ -2,7 +2,7 @@ ruby-noise-detection with Keen IO Integration
 ====================
 Special thanks to [@mmornati](https://github.com/mmornati) for the base code for this library
 
-Noise Detection Ruby Script. This code, instead of [@mmornati](https://github.com/mmornati)'s original content, will make a call 
+Noise Detection Ruby Script. This code, instead of [@mmornati](https://github.com/mmornati)'s original intention of sending an email, will make a call 
 out to a Keen IO API to track when the noise happens. Will be used with my Dog Caller application
 
 *The Below README is from the [original repo](https://github.com/mmornati/ruby-noise-detection) [created by mmornati](https://github.com/mmornati).*
