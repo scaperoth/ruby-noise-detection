@@ -32,7 +32,10 @@ So you need to install these packages on your raspberrypi (or other linux
 system):
 
 ```bash
-sudo apt-get install sox alsa-utils
+sudo apt-get install sox alsa-utils libssl-dev
+```
+```
+gem install em-http-request
 ```
 
 Then, in the current version, the script does not accept parameters to change

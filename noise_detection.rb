@@ -22,6 +22,7 @@ require 'optparse'
 require 'net/smtp'
 require 'logger'
 require 'date'
+require 'keen'
 require 'em-http-request'
 
 
@@ -35,12 +36,19 @@ RECORD_FILENAME='/tmp/noise.wav'
 LOG_FILE='/var/log/noise_detector.log'
 PID_FILE='/etc/noised/noised.pid'
 
+Thread.new { EventMachine.run }
+
 logger = Logger.new(LOG_FILE)
 logger.level = Logger::DEBUG
 
 logger.info("Noise detector started @ #{DateTime.now.strftime('%d/%m/%Y %H:%M:%S')}")
 
-Thread.new { EventMachine.run }
+def ensure_em 
+  unless EventMachine.reactor_running? && EventMachine.reactor_thread.alive?
+    Thread.new { EventMachine.run }
+    sleep 1
+  end
+end
 
 def self.check_required()
   if !File.exists?('/usr/bin/arecord')
@@ -168,6 +176,7 @@ pid = fork do
     logger.debug("Detected amplitude: #{amplitude}") if options[:verbose]
     if amplitude > THRESHOLD
       logger.info("Sound detected!!!")
+      ensure_em
       http = Keen.publish_async(options[:event], { :bark => amplitude})
       http.callback { |response| puts "Success: #{response}"}
       http.errback { puts "was a failurrr :,(" }
